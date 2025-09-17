@@ -1,18 +1,80 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import { Context, Hono } from 'hono'
+import { CreateShortcutBody } from './schemas'
+import { generateSlug } from './utils'
+import z from 'zod'
+import { HTTPException } from 'hono/http-exception'
 
-export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
-} satisfies ExportedHandler<Env>;
+interface HonoEnv {
+  Bindings: Env
+}
+
+const app = new Hono<HonoEnv>()
+
+function requireAuth(c: Context<HonoEnv>) {
+  const { API_KEY } = c.env
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || authHeader !== `Bearer ${API_KEY}`) {
+    throw new HTTPException(401, {
+      res: c.json({ error: 'UNAUTHORIZED' }, 401),
+    })
+  }
+}
+
+app.onError(async (error, c) => {
+  if (error instanceof Error && 'getResponse' in error) {
+    return error.getResponse()
+  }
+  if (error instanceof z.ZodError) {
+    return c.json({ error: 'ARGUMENTS', details: z.treeifyError(error) }, 400)
+  }
+  console.error(error)
+  return c.json({ error: 'UNKNOWN' }, 500)
+})
+
+app.post('/', async (c) => {
+  requireAuth(c)
+
+  const defaultSlug = generateSlug()
+  const { url, slug = defaultSlug } = CreateShortcutBody.parse(await c.req.json())
+  console.log({ url, slug })
+
+  const result = await c.env.DB.prepare(
+    'INSERT INTO shortcuts (url, slug) VALUES (?, ?) ON CONFLICT(slug) DO NOTHING RETURNING slug, url'
+  )
+    .bind(url, slug)
+    .first<{ slug: string; url: string } | null>()
+  if (!result) {
+    return c.json({ error: 'CONFLICT' }, 409)
+  }
+
+  return c.json(result, 200)
+})
+
+app.get('/:slug', async (c) => {
+  const slug = c.req.param('slug')
+
+  const result = await c.env.DB.prepare(
+    'UPDATE shortcuts SET uses = uses + 1 WHERE slug = ? RETURNING url'
+  )
+    .bind(slug)
+    .first<{ url: string } | null>()
+
+  if (!result) {
+    return c.text('', 404)
+  }
+  return c.redirect(result.url)
+})
+
+app.get('/api/:slug', async (c) => {
+  requireAuth(c)
+
+  const slug = c.req.param('slug')
+  const data = await c.env.DB.prepare('SELECT * FROM shortcuts WHERE slug = ?').bind(slug).first()
+
+  if (!data) {
+    return c.json({ error: 'NOT_FOUND' }, 404)
+  }
+  return c.json(data)
+})
+
+export default app satisfies ExportedHandler<Env>
