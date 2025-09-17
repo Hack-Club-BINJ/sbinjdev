@@ -10,11 +10,12 @@
 	"observability": {
 		"enabled": true
 	},
+  "workers_dev": false,
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "sbinjdev",
-			"database_id": "7a1bf18a-18ab-4ab2-99ae-692c0fe70bd0"
+			"database_id": "5a7c11b4-4cb2-494e-b131-2cb88c7b5c6e"
 		}
 	]
 	/**

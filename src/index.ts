@@ -31,6 +31,10 @@ app.onError(async (error, c) => {
   return c.json({ error: 'UNKNOWN' }, 500)
 })
 
+app.get('/', async c => {
+  return c.redirect('https://binjhack.club')
+})
+
 app.post('/', async (c) => {
   requireAuth(c)
 
@@ -60,7 +64,7 @@ app.get('/:slug', async (c) => {
     .first<{ url: string } | null>()
 
   if (!result) {
-    return c.text('', 404)
+    return c.notFound()
   }
   return c.redirect(result.url)
 })
@@ -70,6 +74,20 @@ app.get('/api/:slug', async (c) => {
 
   const slug = c.req.param('slug')
   const data = await c.env.DB.prepare('SELECT * FROM shortcuts WHERE slug = ?').bind(slug).first()
+
+  if (!data) {
+    return c.json({ error: 'NOT_FOUND' }, 404)
+  }
+  return c.json(data)
+})
+
+app.delete('/:slug', async (c) => {
+  requireAuth(c)
+
+  const slug = c.req.param('slug')
+  const data = await c.env.DB.prepare('DELETE FROM shortcuts WHERE slug = ? RETURNING *')
+    .bind(slug)
+    .first()
 
   if (!data) {
     return c.json({ error: 'NOT_FOUND' }, 404)
