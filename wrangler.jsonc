@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "sbinjdev",
-	"main": "src/index.ts",
+	"main": "src/index.tsx",
 	"compatibility_date": "2025-09-17",
 	"observability": {
 		"enabled": true
